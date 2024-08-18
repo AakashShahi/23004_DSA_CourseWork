@@ -1,11 +1,11 @@
-
-
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 public class DeliveryOptimizationApp extends JFrame {
 
@@ -19,18 +19,20 @@ public class DeliveryOptimizationApp extends JFrame {
 
     public DeliveryOptimizationApp() {
         setTitle("Delivery Route Optimization");
-        setSize(800, 600);
+        setSize(900, 700);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
         // Initialize components
-        deliveryListArea = new JTextArea(10, 30);
+        deliveryListArea = new JTextArea(10, 40);
         vehicleCapacityField = new JTextField(10);
         distanceConstraintField = new JTextField(10);
-        algorithmComboBox = new JComboBox<>(new String[] {"Dijkstra", "TSP"});
+        algorithmComboBox = new JComboBox<>(new String[]{"Dijkstra", "TSP"});
         optimizeButton = new JButton("Optimize");
-        resultArea = new JTextArea(10, 30);
+        resultArea = new JTextArea(10, 40);
         mapPanel = new JPanel();
+        mapPanel.setBackground(Color.LIGHT_GRAY);
+        mapPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK));
 
         // Ensure JTextArea scrolls when content is too long
         resultArea.setEditable(false);
@@ -43,30 +45,33 @@ public class DeliveryOptimizationApp extends JFrame {
         inputPanel.setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.insets = new Insets(10, 10, 10, 10);
         gbc.gridx = 0;
         gbc.gridy = 0;
+        gbc.gridwidth = 2;
         inputPanel.add(new JLabel("Delivery Points (Address;Priority):"), gbc);
-        gbc.gridx = 1;
-        inputPanel.add(new JScrollPane(deliveryListArea), gbc);
-        gbc.gridx = 0;
         gbc.gridy = 1;
+        gbc.gridwidth = 2;
+        inputPanel.add(new JScrollPane(deliveryListArea), gbc);
+        gbc.gridwidth = 1;
+        gbc.gridy = 2;
         inputPanel.add(new JLabel("Vehicle Capacity:"), gbc);
         gbc.gridx = 1;
         inputPanel.add(vehicleCapacityField, gbc);
         gbc.gridx = 0;
-        gbc.gridy = 2;
+        gbc.gridy = 3;
         inputPanel.add(new JLabel("Distance Constraint:"), gbc);
         gbc.gridx = 1;
         inputPanel.add(distanceConstraintField, gbc);
         gbc.gridx = 0;
-        gbc.gridy = 3;
+        gbc.gridy = 4;
         inputPanel.add(new JLabel("Algorithm:"), gbc);
         gbc.gridx = 1;
         inputPanel.add(algorithmComboBox, gbc);
         gbc.gridx = 0;
-        gbc.gridy = 4;
+        gbc.gridy = 5;
         gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.CENTER;
         inputPanel.add(optimizeButton, gbc);
 
         JPanel resultPanel = new JPanel();
@@ -96,17 +101,26 @@ public class DeliveryOptimizationApp extends JFrame {
                 int vehicleCapacity = Integer.parseInt(vehicleCapacityText);
                 int distanceConstraint = Integer.parseInt(distanceConstraintText);
 
-                // Start Optimization in a separate thread
-                new Thread(() -> {
-                    // Perform optimization
-                    RouteOptimizationResult result = optimizeRoute(deliveryPoints, vehicleCapacity, distanceConstraint, selectedAlgorithm);
+                // Start Optimization in a SwingWorker
+                SwingWorker<RouteOptimizationResult, Void> worker = new SwingWorker<>() {
+                    @Override
+                    protected RouteOptimizationResult doInBackground() {
+                        // Perform optimization
+                        return optimizeRoute(deliveryPoints, vehicleCapacity, distanceConstraint, selectedAlgorithm);
+                    }
 
-                    // Update GUI with result
-                    SwingUtilities.invokeLater(() -> {
-                        resultArea.setText(result.toString());
-                        visualizeRoute(result);
-                    });
-                }).start();
+                    @Override
+                    protected void done() {
+                        try {
+                            RouteOptimizationResult result = get();
+                            resultArea.setText(result.toString());
+                            visualizeRoute(result);
+                        } catch (InterruptedException | ExecutionException ex) {
+                            JOptionPane.showMessageDialog(DeliveryOptimizationApp.this, "Error during optimization: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
+                };
+                worker.execute();
             } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(DeliveryOptimizationApp.this, "Invalid number format. Please check your input.", "Error", JOptionPane.ERROR_MESSAGE);
             }
@@ -155,9 +169,21 @@ public class DeliveryOptimizationApp extends JFrame {
         // Clear previous visualization
         mapPanel.removeAll();
 
-        // Example visualization: display result text
-        JLabel resultLabel = new JLabel(result.getDescription());
-        mapPanel.add(resultLabel);
+        // Create a grid layout for mapPanel
+        mapPanel.setLayout(new GridLayout(result.getRoute().size(), 1));
+
+        // Colorful markers for each delivery point
+        Color[] colors = {Color.RED, Color.GREEN, Color.BLUE, Color.ORANGE, Color.CYAN, Color.MAGENTA};
+        int colorIndex = 0;
+
+        for (DeliveryPoint point : result.getRoute()) {
+            JPanel pointPanel = new JPanel();
+            pointPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK));
+            pointPanel.setBackground(colors[colorIndex % colors.length]);
+            pointPanel.add(new JLabel(point.toString()));
+            mapPanel.add(pointPanel);
+            colorIndex++;
+        }
 
         mapPanel.revalidate();
         mapPanel.repaint();
@@ -218,4 +244,28 @@ class RouteOptimizationResult {
     public String getDescription() {
         return description;
     }
+
+    public List<DeliveryPoint> getRoute() {
+        return route;
+    }
+
+    public String getRouteAsHtml() {
+        StringBuilder sb = new StringBuilder();
+        for (DeliveryPoint point : route) {
+            sb.append(point.toString()).append("<br>");
+        }
+        return sb.toString();
+    }
 }
+
+// 123 Elm Street; 3
+// 456 Oak Avenue; 1
+// 789 Pine Road; 2
+// 101 Maple Street; 4
+// 202 Birch Boulevard; 2
+// 303 Cedar Lane; 3
+
+
+// 10
+
+// 50
